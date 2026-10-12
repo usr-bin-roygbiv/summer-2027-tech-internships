@@ -1,0 +1,46 @@
+name: Update job list
+
+on:
+  schedule:
+    - cron: "17 13 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-readme
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      LIST: internships
+      REPO: summer-2027-tech-internships
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch the list from applystead.com
+        run: |
+          set -euo pipefail
+          curl -fsS --retry 3 --max-time 60 "https://applystead.com/lists/${LIST}.md" -o list.md
+          grep -q '^# ' list.md
+          grep -q '^| --- |' list.md
+          {
+            printf '%s\n\n' "Open jobs from employers' own career sites, updated daily by Applystead."
+            sed -E "s#\((https://applystead\.com/[^)? ]*)\)#(\1?utm_source=github\&utm_medium=repo\&utm_campaign=${REPO})#g" list.md
+          } > README.md
+          rm list.md
+      - name: Commit only when the list changed
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- README.md; then
+            echo "No change."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git commit -m "Update list $(date -u +%Y-%m-%d)"
+          git push
